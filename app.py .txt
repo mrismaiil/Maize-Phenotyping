@@ -1,0 +1,53 @@
+import streamlit as st
+import joblib
+import cv2
+import numpy as np
+
+# Load models
+tip_rf = joblib.load('tipshape_rf_new.pkl')
+antho_rf = joblib.load('anthocyanin_rf_new.pkl')
+
+def extract_features(img_path):
+    img = cv2.imread(img_path)
+    img = cv2.resize(img, (256, 256))
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return np.zeros(20)
+    largest = max(contours, key=cv2.contourArea)
+    area = cv2.contourArea(largest)
+    perimeter = cv2.arcLength(largest, True)
+    circularity = 4 * np.pi * area / (perimeter ** 2) if perimeter > 0 else 0
+    x, y, w, h = cv2.boundingRect(largest)
+    aspect_ratio = w / h if h != 0 else 0
+    hull = cv2.convexHull(largest)
+    hull_area = cv2.contourArea(hull)
+    solidity = area / hull_area if hull_area != 0 else 0
+    mask = np.zeros_like(gray)
+    cv2.drawContours(mask, [largest], -1, 255, -1)
+    leaf_rgb = cv2.mean(img, mask=mask)[:3]
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    hsv_mean = np.mean(hsv, axis=(0, 1))
+    features = [area, perimeter, circularity, aspect_ratio, solidity,
+                leaf_rgb[0], leaf_rgb[1], leaf_rgb[2],
+                hsv_mean[0], hsv_mean[1], hsv_mean[2], len(contours)]
+    features = np.pad(features, (0, 20 - len(features)), 'constant', constant_values=0)
+    return features
+
+st.title("Maize Phenotyping AI")
+uploaded_file = st.file_uploader("Upload image", type=["jpg", "jpeg", "png"])
+if uploaded_file:
+    with open("temp.jpg", "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    features = extract_features("temp.jpg")
+    features = features.reshape(1, -1)
+    tip_pred = tip_rf.predict(features)[0]
+    tip_probs = tip_rf.predict_proba(features)[0]
+    tip_conf = np.max(tip_probs) * 100
+    antho_pred = antho_rf.predict(features)[0]
+    antho_probs = antho_rf.predict_proba(features)[0]
+    antho_conf = np.max(antho_probs) * 100
+    st.metric("Tip Shape Grade", f"{tip_pred}", f"Confidence: {tip_conf:.1f}%")
+    st.metric("Anthocyanin Grade", f"{antho_pred}", f"Confidence: {antho_conf:.1f}%")
+    st.image(uploaded_file, width=300)
