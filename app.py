@@ -3,11 +3,11 @@ import joblib
 import cv2
 import numpy as np
 
+# Load models
 tip_rf = joblib.load('tipshape_rf_new.pkl')
 antho_rf = joblib.load('anthocyanin_rf_new.pkl')
 
 def extract_features(img_array):
-    # img_array is a numpy array from OpenCV (BGR)
     img = cv2.resize(img_array, (256, 256))
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
@@ -34,24 +34,30 @@ def extract_features(img_array):
     features = np.pad(features, (0, 20 - len(features)), 'constant', constant_values=0)
     return features
 
-st.title("Maize Phenotyping AI")
+st.title("🌽 Maize Phenotyping AI")
 uploaded_file = st.file_uploader("Upload image", type=["jpg", "jpeg", "png"])
+
 if uploaded_file:
-    # Read image bytes and decode with OpenCV
+    # Read image bytes and decode with OpenCV (no PIL needed)
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     
     features = extract_features(img)
     features = features.reshape(1, -1)
+    
     tip_pred = tip_rf.predict(features)[0]
     tip_probs = tip_rf.predict_proba(features)[0]
     tip_conf = np.max(tip_probs) * 100
+    
     antho_pred = antho_rf.predict(features)[0]
     antho_probs = antho_rf.predict_proba(features)[0]
     antho_conf = np.max(antho_probs) * 100
     
-    st.metric("Tip Shape Grade", f"{tip_pred}", f"Confidence: {tip_conf:.1f}%")
-    st.metric("Anthocyanin Grade", f"{antho_pred}", f"Confidence: {antho_conf:.1f}%")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Tip Shape Grade", f"{tip_pred}", f"Confidence: {tip_conf:.1f}%")
+    with col2:
+        st.metric("Anthocyanin Grade", f"{antho_pred}", f"Confidence: {antho_conf:.1f}%")
     
-    # Display the uploaded image using Streamlit's built-in image viewer
+    # Display the uploaded image
     st.image(uploaded_file, caption="Uploaded Image", width=300)
