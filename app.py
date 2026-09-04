@@ -3,13 +3,12 @@ import joblib
 import cv2
 import numpy as np
 
-# Load models
 tip_rf = joblib.load('tipshape_rf_new.pkl')
 antho_rf = joblib.load('anthocyanin_rf_new.pkl')
 
-def extract_features(img_path):
-    img = cv2.imread(img_path)
-    img = cv2.resize(img, (256, 256))
+def extract_features(img_array):
+    # img_array is a numpy array from OpenCV (BGR)
+    img = cv2.resize(img_array, (256, 256))
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -38,9 +37,11 @@ def extract_features(img_path):
 st.title("Maize Phenotyping AI")
 uploaded_file = st.file_uploader("Upload image", type=["jpg", "jpeg", "png"])
 if uploaded_file:
-    with open("temp.jpg", "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    features = extract_features("temp.jpg")
+    # Read image bytes and decode with OpenCV
+    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+    
+    features = extract_features(img)
     features = features.reshape(1, -1)
     tip_pred = tip_rf.predict(features)[0]
     tip_probs = tip_rf.predict_proba(features)[0]
@@ -48,6 +49,9 @@ if uploaded_file:
     antho_pred = antho_rf.predict(features)[0]
     antho_probs = antho_rf.predict_proba(features)[0]
     antho_conf = np.max(antho_probs) * 100
+    
     st.metric("Tip Shape Grade", f"{tip_pred}", f"Confidence: {tip_conf:.1f}%")
     st.metric("Anthocyanin Grade", f"{antho_pred}", f"Confidence: {antho_conf:.1f}%")
-    st.image(uploaded_file, width=300)
+    
+    # Display the uploaded image using Streamlit's built-in image viewer
+    st.image(uploaded_file, caption="Uploaded Image", width=300)
