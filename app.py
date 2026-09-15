@@ -2,10 +2,19 @@ import streamlit as st
 import joblib
 import cv2
 import numpy as np
+import pandas as pd
+import io
+from datetime import datetime
 
+# ==========================================
+# LOAD MODELS
+# ==========================================
 tip_rf = joblib.load('tipshape_rf_new.pkl')
 antho_rf = joblib.load('anthocyanin_rf_new.pkl')
 
+# ==========================================
+# FEATURE EXTRACTION
+# ==========================================
 def extract_features(img_array):
     img = cv2.resize(img_array, (256, 256))
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -37,7 +46,11 @@ def extract_features(img_array):
     for i in range(3):
         channel_pixels = img[:, :, i][mask == 255]
         if len(channel_pixels) > 0:
-            features.extend([np.percentile(channel_pixels, 25), np.percentile(channel_pixels, 50), np.percentile(channel_pixels, 75)])
+            features.extend([
+                np.percentile(channel_pixels, 25),
+                np.percentile(channel_pixels, 50),
+                np.percentile(channel_pixels, 75)
+            ])
         else:
             features.extend([0, 0, 0])
     for i in range(3):
@@ -48,21 +61,109 @@ def extract_features(img_array):
     features = np.pad(features, (0, max(0, 50 - len(features))), 'constant', constant_values=0)
     return features[:50]
 
+# ==========================================
+# APP LAYOUT
+# ==========================================
+st.set_page_config(page_title="Maize Phenotyping AI", page_icon="🌽", layout="wide")
 st.title("🌽 Maize Phenotyping AI")
-uploaded_file = st.file_uploader("Upload image", type=["jpg", "jpeg", "png"])
-if uploaded_file:
-    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-    features = extract_features(img).reshape(1, -1)
-    tip_pred = tip_rf.predict(features)[0]
-    tip_probs = tip_rf.predict_proba(features)[0]
-    tip_conf = np.max(tip_probs) * 100
-    antho_pred = antho_rf.predict(features)[0]
-    antho_probs = antho_rf.predict_proba(features)[0]
-    antho_conf = np.max(antho_probs) * 100
+st.write("Upload multiple maize seedling images to get Tip Shape (1–5) and Anthocyanin (1–9) grades.")
+
+# Multi-file uploader
+uploaded_files = st.file_uploader(
+    "Upload images (you can select multiple files)",
+    type=["jpg", "jpeg", "png"],
+    accept_multiple_files=True
+)
+
+if uploaded_files:
+    st.write(f"**{len(uploaded_files)} image(s) uploaded**")
+    
+    results = []
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    for i, uploaded_file in enumerate(uploaded_files):
+        status_text.write(f"Processing {uploaded_file.name} ({i+1}/{len(uploaded_files)})...")
+        
+        # Read image
+        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+        img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+        
+        # Extract features
+        features = extract_features(img).reshape(1, -1)
+        
+        # Predictions
+        tip_pred = int(tip_rf.predict(features)[0])
+        tip_conf = float(np.max(tip_rf.predict_proba(features)[0]) * 100)
+        
+        antho_pred = int(antho_rf.predict(features)[0])
+        antho_conf = float(np.max(antho_rf.predict_proba(features)[0]) * 100)
+        
+        # Store result
+        results.append({
+            "Image Name": uploaded_file.name,
+            "Tip Shape Grade": tip_pred,
+            "Tip Shape Confidence (%)": round(tip_conf, 2),
+            "Anthocyanin Grade": antho_pred,
+            "Anthocyanin Confidence (%)": round(antho_conf, 2)
+        })
+        
+        progress_bar.progress((i + 1) / len(uploaded_files))
+    
+    status_text.write("✅ All images processed!")
+    progress_bar.empty()
+    
+    # ==========================================
+    # DISPLAY RESULTS AS EDITABLE TABLE
+    # ==========================================
+    st.subheader("📊 Results")
+    st.write("You can edit the grades directly in the table below before exporting.")
+    
+    df = pd.DataFrame(results)
+    
+    # Editable table
+    edited_df = st.data_editor(
+        df,
+        use_container_width=True,
+        num_rows="dynamic",
+        column_config={
+            "Tip Shape Grade": st.column_config.NumberColumn(min_value=1, max_value=5, step=1),
+            "Anthocyanin Grade": st.column_config.NumberColumn(min_value=1, max_value=9, step=1),
+        }
+    )
+    
+    # ==========================================
+    # EXPORT OPTIONS
+    # ==========================================
+    st.subheader("💾 Export Results")
     col1, col2 = st.columns(2)
+    
     with col1:
-        st.metric("Tip Shape Grade", f"{tip_pred}", f"Confidence: {tip_conf:.1f}%")
+        csv = edited_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download as CSV",
+            data=csv,
+            file_name=f"maize_phenotyping_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
+    
     with col2:
-        st.metric("Anthocyanin Grade", f"{antho_pred}", f"Confidence: {antho_conf:.1f}%")
-    st.image(uploaded_file, caption="Uploaded Image", width=300)
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            edited_df.to_excel(writer, index=False, sheet_name='Results')
+        excel_data = excel_buffer.getvalue()
+        st.download_button(
+            label="📥 Download as Excel (.xlsx)",
+            data=excel_data,
+            file_name=f"maize_phenotyping_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    
+    # ==========================================
+    # IMAGE PREVIEW (expandable)
+    # ==========================================
+    with st.expander("🖼️ View Uploaded Images"):
+        cols = st.columns(3)
+        for i, uploaded_file in enumerate(uploaded_files):
+            with cols[i % 3]:
+                st.image(uploaded_file, caption=uploaded_file.name, use_column_width=True)
