@@ -62,6 +62,138 @@ def extract_features(img_array):
     return features[:50]
 
 # ==========================================
+# SESSION STATE
+# ==========================================
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = 0
+
+# ==========================================
+# APP LAYOUT
+# ==========================================
+st.set_page_config(page_title="Maize Phenotyping AI", page_icon="🌽", layout="wide")
+st.title("🌽 Maize Phenotyping AI")
+st.write("Upload multiple maize seedling images to get Tip Shape (1–5) and Anthocyanin (1–9) grades.")
+
+# Clear button (top right)
+col_a, col_b = st.columns([6, 1])
+with col_b:
+    if st.button("🔄 Clear / Start Over"):
+        st.session_state.uploader_key += 1
+        st.rerun()
+
+# Multi-file uploader with dynamic key
+uploaded_files = st.file_uploader(
+    "Upload images (you can select multiple files)",
+    type=["jpg", "jpeg", "png"],
+    accept_multiple_files=True,
+    key=f"uploader_{st.session_state.uploader_key}"
+)
+
+if uploaded_files:
+    st.write(f"**{len(uploaded_files)} image(s) uploaded**")
+
+    results = []
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    for i, uploaded_file in enumerate(uploaded_files):
+        status_text.write(f"Processing {uploaded_file.name} ({i+1}/{len(uploaded_files)})...")
+
+        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+        img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+        features = extract_features(img).reshape(1, -1)
+
+        tip_pred = int(tip_rf.predict(features)[0])
+        tip_conf = float(np.max(tip_rf.predict_proba(features)[0]) * 100)
+
+        antho_pred = int(antho_rf.predict(features)[0])
+        antho_conf = float(np.max(antho_rf.predict_proba(features)[0]) * 100)
+
+        results.append({
+            "Image Name": uploaded_file.name,
+            "Tip Shape Grade": tip_pred,
+            "Tip Shape Confidence (%)": round(tip_conf, 2),
+            "Anthocyanin Grade": antho_pred,
+            "Anthocyanin Confidence (%)": round(antho_conf, 2)
+        })
+
+        progress_bar.progress((i + 1) / len(uploaded_files))
+
+    status_text.write("✅ All images processed!")
+    progress_bar.empty()
+
+    # Editable table
+    st.subheader("📊 Results")
+    st.write("You can edit the grades directly in the table below before exporting.")
+
+    df = pd.DataFrame(results)
+    edited_df = st.data_editor(
+        df,
+        use_container_width=True,
+        num_rows="dynamic",
+        column_config={
+            "Tip Shape Grade": st.column_config.NumberColumn(min_value=1, max_value=5, step=1),
+            "Anthocyanin Grade": st.column_config.NumberColumn(min_value=1, max_value=9, step=1),
+        }
+    )
+
+    # Export
+    st.subheader("💾 Export Results")
+    col1, col2 = st.columns(2)
+    with col1:
+        csv = edited_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download as CSV",
+            data=csv,
+            file_name=f"maize_phenotyping_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
+    with col2:
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            edited_df.to_excel(writer, index=False, sheet_name='Results')
+        excel_data = excel_buffer.getvalue()
+        st.download_button(
+            label="📥 Download as Excel (.xlsx)",
+            data=excel_data,
+            file_name=f"maize_phenotyping_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    # Image preview
+    with st.expander("🖼️ View Uploaded Images"):
+        cols = st.columns(3)
+        for i, uploaded_file in enumerate(uploaded_files):
+            with cols[i % 3]:
+                st.image(uploaded_file, caption=uploaded_file.name, use_container_width=True)    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    hsv_leaf = cv2.mean(hsv, mask=mask)[:3]
+    lab_leaf = cv2.mean(lab, mask=mask)[:3]
+    features = []
+    features.extend([area, perimeter, circularity, aspect_ratio, solidity, len(contours)])
+    features.extend(leaf_rgb)
+    features.extend(hsv_leaf)
+    features.extend(lab_leaf)
+    for i in range(3):
+        channel_pixels = img[:, :, i][mask == 255]
+        if len(channel_pixels) > 0:
+            features.extend([
+                np.percentile(channel_pixels, 25),
+                np.percentile(channel_pixels, 50),
+                np.percentile(channel_pixels, 75)
+            ])
+        else:
+            features.extend([0, 0, 0])
+    for i in range(3):
+        hist = cv2.calcHist([img], [i], mask, [8], [0, 256]).flatten()
+        total = np.sum(hist)
+        features.extend(hist / total if total > 0 else hist)
+    features.append(lab_leaf[1])
+    features = np.pad(features, (0, max(0, 50 - len(features))), 'constant', constant_values=0)
+    return features[:50]
+
+# ==========================================
 # APP LAYOUT
 # ==========================================
 st.set_page_config(page_title="Maize Phenotyping AI", page_icon="🌽", layout="wide")
