@@ -166,4 +166,4 @@ if uploaded_files:
         cols = st.columns(3)
         for i, uploaded_file in enumerate(uploaded_files):
             with cols[i % 3]:
-                st.image(uploaded_file, caption=uploaded_file.name, use_column_width=True)
+                st.image(uploaded_file, caption=uploaded_file.name, use_container_width=True)
