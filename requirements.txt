@@ -3,3 +3,5 @@ joblib
 numpy
 scikit-learn
 opencv-python-headless
+pandas
+openpyxl
