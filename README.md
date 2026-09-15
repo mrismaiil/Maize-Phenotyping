@@ -1,38 +1,38 @@
-# 🌽 Maize Seedling Phenotyping AI
+# 🌽 Maize Phenotyping AI
 
-An automated image-based tool for grading two key DUS (Distinctness, Uniformity, Stability) descriptors in maize seedlings.
+An automated image-based tool for grading two key DUS (Distinctness, Uniformity, Stability) descriptors in maize seedlings:
 
-## Phenotyping Traits
+- **First leaf tip shape** (Grades 1–5)
+- **Anthocyanin coloration of the first leaf sheath** (Grades 1–9)
 
-| Trait | Scale | Description |
-|-------|-------|-------------|
-| **First leaf tip shape** | Grades 1–5 | Visual classification of leaf tip morphology |
-| **Anthocyanin coloration of the first leaf sheath** | Grades 1–9 | Intensity of purple pigmentation on the leaf sheath |
+## 🚀 Live Tool
 
-## How It Works
+Access the web app here: [maize-phenotyping-mrismail.streamlit.app](https://maize-phenotyping-mrismail.streamlit.app)
 
-1. Upload a high-resolution photo of the first leaf sheath.
-2. The system extracts color and shape features (RGB, LAB, HSV, contour geometry).
-3. A trained Random Forest classifier predicts the grades for both traits.
-4. Confidence scores are displayed alongside each prediction.
+## 📖 Overview
 
-## Model Performance
+This tool uses a **Random Forest classifier** trained on **50 engineered features** (shape, color, texture) extracted from high-resolution maize seedling images.
 
-| Trait | AI1 (exact match) | AI2 (within 1 grade) |
-|-------|-------------------|----------------------|
-| First leaf tip shape | 52.38% | 90.48% |
-| Anthocyanin coloration of the first leaf sheath | 24.76% | 60.95% |
+To address class imbalance, **SMOTE** (Synthetic Minority Over-sampling Technique) was applied during training.
 
-- **AI1:** Percentage of exact grade matches.
-- **AI2:** Percentage of predictions within one grade of the true label (the standard "1-code difference" acceptance criterion used in DUS testing).
+## 📊 Model Performance
 
-## Dataset
+Performance is evaluated using two metrics:
 
-- **3,027** maize seedling images
-- Standardized imaging conditions (consistent lighting, neutral gray background)
-- Expert-assigned grades following GB/T 19557.24-2018 guidelines
+- **AI1**: Exact match between model prediction and manual grade
+- **AI2**: Prediction within ±1 grade of the manual grade (the standard "1-code difference" acceptance criterion for DUS)
 
-## Usage
+| Trait | AI1 (Exact) | AI2 (Within 1) |
+|-------|-------------|----------------|
+| First leaf tip shape (1–5) | 78.75% | 95.05% |
+| Anthocyanin coloration (1–9) | 62.46% | 81.95% |
+
+## 📁 Dataset
+
+- **3,027** maize seedling images from DUS trials (2015–2023)
+- Graded by expert testers following **GB/T 19557.24-2018** guidelines
+
+## 🛠️ How to Run Locally
 
 ```bash
 pip install -r requirements.txt
